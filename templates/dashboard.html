@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Apps</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <!-- Top bar -->
+    <div class="topbar">
+        <div class="logo">
+            <svg viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="url(#g)"/>
+                <path d="M9 22V10l7 6-7 6z" fill="#fff" opacity="0.9"/>
+                <path d="M16 22V10l7 6-7 6z" fill="#fff" opacity="0.5"/>
+                <defs><linearGradient id="g" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#667eea"/><stop offset="1" stop-color="#764ba2"/></linearGradient></defs>
+            </svg>
+            <span class="logo-text">My Apps</span>
+        </div>
+        <form class="search-form" action="https://www.google.com/search" method="GET" target="_blank">
+            <input type="text" name="q" id="search-input" placeholder="Buscar en Google..." autocomplete="off" autofocus>
+            <button type="button" class="search-clear" onclick="this.previousElementSibling.value='';this.previousElementSibling.focus()">&times;</button>
+        </form>
+        <span class="topbar-right" id="topbar-date"><span class="date-weekday" id="date-weekday"></span><span class="date-numeric" id="date-numeric"></span></span>
+    </div>
+
+    <div class="layout">
+        <!-- Left sidebar -->
+        <div class="sidebar sidebar-left">
+            <!-- Mis Aplicaciones widget -->
+            <div class="apps-widget">
+                <a href="http://192.168.1.136:19480/portfoliotracker/" class="app-entry" data-url="http://192.168.1.136:19480/portfoliotracker/" target="_blank">
+                    <span class="app-emoji">&#128200;</span>
+                    <span class="app-info">
+                        <span class="app-name">Portfolio Tracker</span>
+                        <span class="app-status"><span class="status-indicator"></span><span class="status-label">Checking...</span></span>
+                    </span>
+                </a>
+                <a href="http://192.168.1.136:19481/myCalendar/" class="app-entry" data-url="http://192.168.1.136:19481/myCalendar/" target="_blank">
+                    <span class="app-emoji">&#128197;</span>
+                    <span class="app-info">
+                        <span class="app-name">My Calendar</span>
+                        <span class="app-status"><span class="status-indicator"></span><span class="status-label">Checking...</span></span>
+                    </span>
+                </a>
+                <a href="http://192.168.1.136:19482/api/mynotes" class="app-entry" data-url="http://192.168.1.136:19482/api/mynotes" target="_blank">
+                    <span class="app-emoji">&#128221;</span>
+                    <span class="app-info">
+                        <span class="app-name">MyNotes</span>
+                        <span class="app-status"><span class="status-indicator"></span><span class="status-label">Checking...</span></span>
+                    </span>
+                </a>
+            </div>
+            <!-- Weather widget -->
+            <a href="https://www.eltiempo.es/alcala-de-guadaira.html" class="weather-widget" id="weather-widget" target="_blank" style="text-decoration:none;color:inherit">
+                <div class="weather-location">Alcalá de Guadaíra</div>
+                <div class="weather-main">
+                    <span class="weather-icon" id="weather-icon">--</span>
+                    <span class="weather-temp" id="weather-temp">--°</span>
+                </div>
+                <div class="weather-desc" id="weather-desc">Cargando...</div>
+                <div class="weather-details">
+                    <span id="weather-humidity">💧 --%</span>
+                    <span id="weather-wind">💨 -- km/h</span>
+                </div>
+            </a>
+            <!-- Bandwidth widget -->
+            <div class="bandwidth-widget" id="bandwidth-widget">
+                <div class="bw-header">
+                    <svg class="bw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V4"/><path d="M5 12l7-8 7 8"/></svg>
+                    <span>Ancho de Banda</span>
+                </div>
+                <div class="bw-speed">
+                    <span class="bw-value" id="bw-value">--</span>
+                    <span class="bw-unit">Mbps</span>
+                </div>
+                <div class="bw-bar-container">
+                    <div class="bw-bar" id="bw-bar"></div>
+                </div>
+                <div class="bw-status" id="bw-status">Midiendo...</div>
+                <button class="bw-refresh" id="bw-refresh" title="Medir de nuevo">&#8635;</button>
+            </div>
+        </div>
+
+        <!-- Main grid: rendered from server -->
+        <div class="main" id="main-grid">
+            {{range .Categories}}
+            <div class="category" data-category-id="{{.ID}}">
+                <div class="category-header">
+                    <span class="category-icon">{{.Icon}}</span>
+                    <span class="category-title">{{.Name}}</span>
+                    <button class="btn-add-link" title="Añadir enlace" onclick="openAddLinkModal(this.closest('.category'))">+</button>
+                    {{if not .Builtin}}
+                    <button class="btn-delete-cat" title="Eliminar categoría" onclick="deleteCategory('{{.ID}}')">×</button>
+                    {{end}}
+                </div>
+                {{range .Links}}
+                <a href="{{.URL}}" class="link-item" target="_blank"
+                   data-link-id="{{.ID}}" data-is-builtin="{{.Builtin}}">
+                    <img src="https://www.google.com/s2/favicons?domain={{.Domain}}&sz=64" alt="">
+                    <span>{{.Name}}</span>
+                    {{if not .Builtin}}
+                    <button class="btn-delete-link" title="Eliminar"
+                            onclick="event.preventDefault();event.stopPropagation();deleteLink('{{.ID}}')">×</button>
+                    {{end}}
+                </a>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- Modal for adding links/categories -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal" id="modal">
+            <h3 id="modal-title">Añadir enlace</h3>
+            <div id="modal-fields"></div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="modal-cancel">Cancelar</button>
+                <button class="btn-save" id="modal-save">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating buttons -->
+    <button class="btn-add-category" id="btn-add-category" title="Añadir categoría">+</button>
+    <button class="btn-add-category btn-import-json" id="btn-import-json" title="Importar JSON">↑</button>
+    <button class="btn-add-category btn-export-json" id="btn-export-json" title="Exportar JSON" style="bottom:7.2rem;font-size:1rem;background:linear-gradient(135deg,#66bb6a,#2e7d32);box-shadow:0 4px 16px rgba(102,187,106,0.3)">↓</button>
+    <input type="file" id="json-file-input" accept=".json" style="display:none">
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
