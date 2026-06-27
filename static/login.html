@@ -182,7 +182,7 @@
             <span>My Apps</span>
         </div>
         <div class="login-title">Iniciar sesión</div>
-        <form id="login-form" autocomplete="on">
+        <form id="login-form" method="post" autocomplete="on">
             <div class="form-group">
                 <label for="email">Email</label>
                 <input type="email" id="email" name="email" placeholder="tu@email.com" autocomplete="email" required autofocus>
@@ -199,48 +199,13 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/static/js/auth.js"></script>
     <script>
-        (async function() {
-            // Auto-redirect if already logged in
-            try {
-                if (typeof supabase !== 'undefined') {
-                    // Guard against redirect loops: if we already tried redirecting
-                    // and ended up back here, don't try again
-                    if (sessionStorage.getItem('login-redirect-attempted')) {
-                        sessionStorage.removeItem('login-redirect-attempted');
-                        // Stay on login page — show a message
-                        const errorMsg = document.getElementById('error-msg');
-                        if (errorMsg) {
-                            errorMsg.textContent = 'Sesión no válida. Inicia sesión de nuevo.';
-                            errorMsg.classList.add('visible');
-                        }
-                        // Clear stale auth data
-                        await initSupabase().auth.signOut();
-                        document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
-                        return;
-                    }
-
-                    const { data: { session } } = await initSupabase().auth.getSession();
-                    if (session && session.expires_at && session.expires_at > Math.floor(Date.now() / 1000)) {
-                        sessionStorage.setItem('login-redirect-attempted', '1');
-                        document.cookie = 'sb-access-token=' + session.access_token + '; path=/; max-age=' + session.expires_in + '; SameSite=Lax';
-                        window.location.href = '/';
-                        return;
-                    }
-                    // Session expired — clear stale data and show login
-                    if (session && !(session.expires_at > Math.floor(Date.now() / 1000))) {
-                        await initSupabase().auth.signOut();
-                        document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
-                    }
-                }
-            } catch (e) {
-                // SDK not loaded or Supabase unreachable — stay on login page
-            }
-
+        // ── Attach submit handler immediately (synchronous) ──
+        (function() {
             const form = document.getElementById('login-form');
             const btn = document.getElementById('login-btn');
             const errorMsg = document.getElementById('error-msg');
 
-            form.addEventListener('submit', async (e) => {
+            form.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const email = document.getElementById('email').value.trim();
                 const password = document.getElementById('password').value;
@@ -252,7 +217,8 @@
                 errorMsg.classList.remove('visible');
 
                 try {
-                    const { data, error } = await initSupabase().auth.signInWithPassword({ email, password });
+                    const client = initSupabase();
+                    const { data, error } = await client.auth.signInWithPassword({ email, password });
                     if (error) {
                         errorMsg.textContent = error.message === 'Invalid login credentials'
                             ? 'Email o contraseña incorrectos'
@@ -263,13 +229,11 @@
                         return;
                     }
                     if (data.session) {
-                        // Use getSession() for the real token — signInWithPassword
-                        // may return a partial session in some SDK versions
-                        const { data: { session: fullSession } } = await initSupabase().auth.getSession();
+                        const { data: { session: fullSession } } = await client.auth.getSession();
                         const token = fullSession?.access_token || data.session.access_token;
                         const maxAge = fullSession?.expires_in || data.session.expires_in || 3600;
                         sessionStorage.setItem('login-redirect-attempted', '1');
-                        document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + maxAge + '; SameSite=Lax';
+                        document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + maxAge + '; SameSite=Lax; Secure';
                         window.location.href = '/';
                     }
                 } catch (err) {
@@ -279,6 +243,40 @@
                     btn.textContent = 'Iniciar sesión';
                 }
             });
+        })();
+
+        // ── Auto-redirect if already logged in (async, non-blocking) ──
+        (async function() {
+            try {
+                if (typeof supabase === 'undefined') return;
+                const client = initSupabase();
+
+                if (sessionStorage.getItem('login-redirect-attempted')) {
+                    sessionStorage.removeItem('login-redirect-attempted');
+                    var errorMsg = document.getElementById('error-msg');
+                    if (errorMsg) {
+                        errorMsg.textContent = 'Sesión no válida. Inicia sesión de nuevo.';
+                        errorMsg.classList.add('visible');
+                    }
+                    await client.auth.signOut();
+                    document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
+                    return;
+                }
+
+                const { data: { session } } = await client.auth.getSession();
+                if (session && session.expires_at && session.expires_at > Math.floor(Date.now() / 1000)) {
+                    sessionStorage.setItem('login-redirect-attempted', '1');
+                    document.cookie = 'sb-access-token=' + session.access_token + '; path=/; max-age=' + session.expires_in + '; SameSite=Lax; Secure';
+                    window.location.href = '/';
+                    return;
+                }
+                if (session) {
+                    await client.auth.signOut();
+                    document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
+                }
+            } catch (e) {
+                // SDK not loaded or Supabase unreachable — stay on login page
+            }
         })();
     </script>
 </body>
