@@ -1,0 +1,38 @@
+# Binarios compilados localmente
+myhomeweb
+myhomeweb.exe
+*.exe
+
+# Base de datos local (se crea en el volumen)
+data/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD (no necesario en imagen)
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Documentación y planes
+*.md
+!README.md
+CLAUDE.md
+plans/
+
+# Scripts (no necesarios en contenedor)
+start.bat
+start.sh
+
+# Docker (no recursivo)
+Dockerfile
+.dockerignore
+
+# Logs y archivos sensibles
+*.log
+*.env*
