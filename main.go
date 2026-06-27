@@ -458,7 +458,7 @@ func validateJWT(tokenStr string) (string, error) {
 
 	parsed, err := jwt.Parse([]byte(tokenStr),
 		jwt.WithKeySet(set),
-		jwt.WithAudience("authenticated"),
+		jwt.WithAcceptableSkew(1*time.Minute),
 		jwt.WithValidate(true),
 	)
 	if err != nil {

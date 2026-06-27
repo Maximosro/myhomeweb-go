@@ -1,4 +1,7 @@
 (async function() {
+    // Clear login redirect guard — we made it to the dashboard
+    sessionStorage.removeItem('login-redirect-attempted');
+
     // ===== Auth guard — must pass before anything else =====
     const token = await getAccessToken();
     if (!token) {

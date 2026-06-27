@@ -203,8 +203,25 @@
             // Auto-redirect if already logged in
             try {
                 if (typeof supabase !== 'undefined') {
+                    // Guard against redirect loops: if we already tried redirecting
+                    // and ended up back here, don't try again
+                    if (sessionStorage.getItem('login-redirect-attempted')) {
+                        sessionStorage.removeItem('login-redirect-attempted');
+                        // Stay on login page — show a message
+                        const errorMsg = document.getElementById('error-msg');
+                        if (errorMsg) {
+                            errorMsg.textContent = 'Sesión no válida. Inicia sesión de nuevo.';
+                            errorMsg.classList.add('visible');
+                        }
+                        // Clear stale auth data
+                        await initSupabase().auth.signOut();
+                        document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
+                        return;
+                    }
+
                     const { data: { session } } = await initSupabase().auth.getSession();
                     if (session && session.expires_at && session.expires_at > Math.floor(Date.now() / 1000)) {
+                        sessionStorage.setItem('login-redirect-attempted', '1');
                         document.cookie = 'sb-access-token=' + session.access_token + '; path=/; max-age=' + session.expires_in + '; SameSite=Lax';
                         window.location.href = '/';
                         return;
@@ -246,7 +263,13 @@
                         return;
                     }
                     if (data.session) {
-                        document.cookie = 'sb-access-token=' + data.session.access_token + '; path=/; max-age=' + data.session.expires_in + '; SameSite=Lax';
+                        // Use getSession() for the real token — signInWithPassword
+                        // may return a partial session in some SDK versions
+                        const { data: { session: fullSession } } = await initSupabase().auth.getSession();
+                        const token = fullSession?.access_token || data.session.access_token;
+                        const maxAge = fullSession?.expires_in || data.session.expires_in || 3600;
+                        sessionStorage.setItem('login-redirect-attempted', '1');
+                        document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + maxAge + '; SameSite=Lax';
                         window.location.href = '/';
                     }
                 } catch (err) {
