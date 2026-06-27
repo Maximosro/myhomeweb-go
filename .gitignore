@@ -1,0 +1,5 @@
+# Go
+myhomeweb.exe
+myhomeweb
+*.exe
+!mvnw.cmd
