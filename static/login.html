@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Apps — Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0a0a12;
+            color: #e0e0e0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: url('/static/images/back.png') center/cover no-repeat;
+            opacity: 0.55;
+            z-index: -1;
+        }
+
+        .login-card {
+            background: rgba(10, 10, 30, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(102, 126, 234, 0.12);
+            border-radius: 16px;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .login-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.6rem;
+            margin-bottom: 2rem;
+        }
+
+        .login-logo svg {
+            width: 36px;
+            height: 36px;
+        }
+
+        .login-logo span {
+            font-size: 1.1rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .login-title {
+            text-align: center;
+            font-size: 1.3rem;
+            font-weight: 500;
+            margin-bottom: 1.5rem;
+            color: #ccc;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #999;
+            margin-bottom: 0.35rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.7rem 0.9rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(102, 126, 234, 0.15);
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .form-group input:focus {
+            border-color: rgba(102, 126, 234, 0.5);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .form-group input::placeholder {
+            color: #666;
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 0.5rem;
+            transition: filter 0.2s, transform 0.1s;
+        }
+
+        .login-btn:hover {
+            filter: brightness(1.1);
+        }
+
+        .login-btn:active {
+            transform: scale(0.98);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            filter: none;
+        }
+
+        .error-msg {
+            text-align: center;
+            color: #f44336;
+            font-size: 0.85rem;
+            margin-top: 1rem;
+            display: none;
+            padding: 0.5rem;
+            background: rgba(244, 67, 54, 0.1);
+            border-radius: 6px;
+        }
+
+        .error-msg.visible {
+            display: block;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-logo">
+            <svg viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="url(#g)"/>
+                <path d="M9 22V10l7 6-7 6z" fill="#fff" opacity="0.9"/>
+                <path d="M16 22V10l7 6-7 6z" fill="#fff" opacity="0.5"/>
+                <defs><linearGradient id="g" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#667eea"/><stop offset="1" stop-color="#764ba2"/></linearGradient></defs>
+            </svg>
+            <span>My Apps</span>
+        </div>
+        <div class="login-title">Iniciar sesión</div>
+        <form id="login-form" autocomplete="on">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" placeholder="tu@email.com" autocomplete="email" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password">Contraseña</label>
+                <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="login-btn" id="login-btn">Iniciar sesión</button>
+        </form>
+        <div class="error-msg" id="error-msg"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/static/js/auth.js"></script>
+    <script>
+        (async function() {
+            // Auto-redirect if already logged in
+            try {
+                if (typeof supabase !== 'undefined') {
+                    // Guard against redirect loops: if we already tried redirecting
+                    // and ended up back here, don't try again
+                    if (sessionStorage.getItem('login-redirect-attempted')) {
+                        sessionStorage.removeItem('login-redirect-attempted');
+                        // Stay on login page — show a message
+                        const errorMsg = document.getElementById('error-msg');
+                        if (errorMsg) {
+                            errorMsg.textContent = 'Sesión no válida. Inicia sesión de nuevo.';
+                            errorMsg.classList.add('visible');
+                        }
+                        // Clear stale auth data
+                        await initSupabase().auth.signOut();
+                        document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
+                        return;
+                    }
+
+                    const { data: { session } } = await initSupabase().auth.getSession();
+                    if (session && session.expires_at && session.expires_at > Math.floor(Date.now() / 1000)) {
+                        sessionStorage.setItem('login-redirect-attempted', '1');
+                        document.cookie = 'sb-access-token=' + session.access_token + '; path=/; max-age=' + session.expires_in + '; SameSite=Lax';
+                        window.location.href = '/';
+                        return;
+                    }
+                    // Session expired — clear stale data and show login
+                    if (session && !(session.expires_at > Math.floor(Date.now() / 1000))) {
+                        await initSupabase().auth.signOut();
+                        document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
+                    }
+                }
+            } catch (e) {
+                // SDK not loaded or Supabase unreachable — stay on login page
+            }
+
+            const form = document.getElementById('login-form');
+            const btn = document.getElementById('login-btn');
+            const errorMsg = document.getElementById('error-msg');
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+
+                if (!email || !password) return;
+
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span>Iniciando...';
+                errorMsg.classList.remove('visible');
+
+                try {
+                    const { data, error } = await initSupabase().auth.signInWithPassword({ email, password });
+                    if (error) {
+                        errorMsg.textContent = error.message === 'Invalid login credentials'
+                            ? 'Email o contraseña incorrectos'
+                            : error.message;
+                        errorMsg.classList.add('visible');
+                        btn.disabled = false;
+                        btn.textContent = 'Iniciar sesión';
+                        return;
+                    }
+                    if (data.session) {
+                        // Use getSession() for the real token — signInWithPassword
+                        // may return a partial session in some SDK versions
+                        const { data: { session: fullSession } } = await initSupabase().auth.getSession();
+                        const token = fullSession?.access_token || data.session.access_token;
+                        const maxAge = fullSession?.expires_in || data.session.expires_in || 3600;
+                        sessionStorage.setItem('login-redirect-attempted', '1');
+                        document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + maxAge + '; SameSite=Lax';
+                        window.location.href = '/';
+                    }
+                } catch (err) {
+                    errorMsg.textContent = 'Error de conexión. Inténtalo de nuevo.';
+                    errorMsg.classList.add('visible');
+                    btn.disabled = false;
+                    btn.textContent = 'Iniciar sesión';
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -12,9 +13,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
-	_ "modernc.org/sqlite"
 	"github.com/google/uuid"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
+	_ "modernc.org/sqlite"
 )
 
 // ─────────────────── Structs ───────────────────
@@ -80,6 +85,10 @@ const (
 	maxNameLen = 200
 	maxURLLen  = 2048
 	maxIconLen = 50
+
+	supabaseURL   = "https://agtkcnxmlbccbwmsuxdz.supabase.co"
+	jwksURL       = supabaseURL + "/auth/v1/.well-known/jwks.json"
+	jwksCacheTime = 1 * time.Hour
 )
 
 func extractDomain(rawURL string) string {
@@ -386,6 +395,106 @@ type dashboardData struct {
 	Categories []CategoryDTO
 }
 
+// ─────────────────── Auth ───────────────────
+
+type contextKey string
+
+const userIDKey contextKey = "user_id"
+
+var (
+	jwksCache   jwk.Set
+	jwksCacheMu sync.RWMutex
+	jwksFetched time.Time
+)
+
+func getJWKS() (jwk.Set, error) {
+	jwksCacheMu.RLock()
+	if jwksCache != nil && time.Since(jwksFetched) < jwksCacheTime {
+		set := jwksCache
+		jwksCacheMu.RUnlock()
+		return set, nil
+	}
+	jwksCacheMu.RUnlock()
+
+	jwksCacheMu.Lock()
+	defer jwksCacheMu.Unlock()
+
+	if jwksCache != nil && time.Since(jwksFetched) < jwksCacheTime {
+		return jwksCache, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	set, err := jwk.Fetch(ctx, jwksURL)
+	if err != nil {
+		if jwksCache != nil {
+			log.Printf("[auth] JWKS fetch failed, using stale cache: %v", err)
+			return jwksCache, nil
+		}
+		return nil, fmt.Errorf("jwks fetch: %w", err)
+	}
+	jwksCache = set
+	jwksFetched = time.Now()
+	return set, nil
+}
+
+func extractToken(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	if after, found := strings.CutPrefix(auth, "Bearer "); found {
+		return after
+	}
+	cookie, err := r.Cookie("sb-access-token")
+	if err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+	return ""
+}
+
+func validateJWT(tokenStr string) (string, error) {
+	set, err := getJWKS()
+	if err != nil {
+		return "", err
+	}
+
+	parsed, err := jwt.Parse([]byte(tokenStr),
+		jwt.WithKeySet(set),
+		jwt.WithAcceptableSkew(1*time.Minute),
+		jwt.WithValidate(true),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	var sub string
+	if err := parsed.Get("sub", &sub); err != nil {
+		sub = "unknown"
+	}
+	return sub, nil
+}
+
+func requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := extractToken(r)
+		if token == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+			return
+		}
+
+		userID, err := validateJWT(token)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid or expired token"})
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userIDKey, userID)
+		next(w, r.WithContext(ctx))
+	}
+}
+
 // ─────────────────── Main ───────────────────
 
 func main() {
@@ -419,13 +528,37 @@ func main() {
 	fs := http.FileServer(http.Dir(staticDir))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", fs))
 
-	// Home (SSR)
+	// Health check (public, no auth)
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	// Login page (public)
+	mux.HandleFunc("GET /login.html", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+	})
+
+	// Home (SSR) — serves dashboard if authenticated, login page otherwise
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		// ponytail: only handle exact "/", let 404 handler catch the rest
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
+
+		// Check auth — serve login if no valid session
+		token := extractToken(r)
+		if token == "" {
+			http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+			return
+		}
+		if _, err := validateJWT(token); err != nil {
+			http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+			return
+		}
+
+		// Authenticated — render dashboard
 		cats, err := loadCategories(db)
 		if err != nil {
 			log.Printf("[home] error loading categories: %v", err)
@@ -446,7 +579,7 @@ func main() {
 	})
 
 	// GET /api/v1/categories
-	mux.HandleFunc("GET /api/v1/categories", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/v1/categories", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		cats, err := loadCategories(db)
 		if err != nil {
 			jsonError(w, "Internal server error", 500)
@@ -458,10 +591,10 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(dtos)
-	})
+	}))
 
 	// POST /api/v1/categories
-	mux.HandleFunc("POST /api/v1/categories", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/categories", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Name string `json:"name"`
 			Icon string `json:"icon"`
@@ -514,10 +647,10 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
 		json.NewEncoder(w).Encode(dto)
-	})
+	}))
 
 	// DELETE /api/v1/categories/{id}
-	mux.HandleFunc("DELETE /api/v1/categories/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("DELETE /api/v1/categories/{id}", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		isBuiltin, found, err := getCategoryBuiltin(db, id)
 		if err != nil {
@@ -551,10 +684,10 @@ func main() {
 			return
 		}
 		w.WriteHeader(204)
-	})
+	}))
 
 	// POST /api/v1/links
-	mux.HandleFunc("POST /api/v1/links", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/links", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Name       string `json:"name"`
 			URL        string `json:"url"`
@@ -614,10 +747,10 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
 		json.NewEncoder(w).Encode(dto)
-	})
+	}))
 
 	// DELETE /api/v1/links/{id}
-	mux.HandleFunc("DELETE /api/v1/links/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("DELETE /api/v1/links/{id}", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		isBuiltin, found, err := getLinkBuiltin(db, id)
 		if err != nil {
@@ -637,10 +770,10 @@ func main() {
 			return
 		}
 		w.WriteHeader(204)
-	})
+	}))
 
 	// GET /api/v1/export
-	mux.HandleFunc("GET /api/v1/export", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/v1/export", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		cats, err := loadCustomCategories(db)
 		if err != nil {
 			jsonError(w, "Internal error", 500)
@@ -664,10 +797,10 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(dto)
-	})
+	}))
 
 	// POST /api/v1/import
-	mux.HandleFunc("POST /api/v1/import", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/import", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		var importData ExportDTO
 		if err := json.NewDecoder(r.Body).Decode(&importData); err != nil {
 			jsonError(w, "Invalid JSON", 400)
@@ -791,7 +924,7 @@ func main() {
 			"categoriesImported": catsImported,
 			"linksImported":      linksImported,
 		})
-	})
+	}))
 
 	// ─── Start ───
 	log.Printf("[server] listening on :%s", port)
