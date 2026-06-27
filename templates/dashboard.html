@@ -26,6 +26,7 @@
             <button type="button" class="search-clear" onclick="this.previousElementSibling.value='';this.previousElementSibling.focus()">&times;</button>
         </form>
         <span class="topbar-right" id="topbar-date"><span class="date-weekday" id="date-weekday"></span><span class="date-numeric" id="date-numeric"></span></span>
+        <button class="btn-logout" id="btn-logout" title="Cerrar sesión">⏻</button>
     </div>
 
     <div class="layout">
@@ -132,6 +133,8 @@
     <button class="btn-add-category btn-export-json" id="btn-export-json" title="Exportar JSON" style="bottom:7.2rem;font-size:1rem;background:linear-gradient(135deg,#66bb6a,#2e7d32);box-shadow:0 4px 16px rgba(102,187,106,0.3)">↓</button>
     <input type="file" id="json-file-input" accept=".json" style="display:none">
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/static/js/auth.js"></script>
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

@@ -147,6 +147,26 @@ body::before {
     opacity: 0.85;
 }
 
+.btn-logout {
+    background: rgba(244, 67, 54, 0.12);
+    border: 1px solid rgba(244, 67, 54, 0.2);
+    color: #f44336;
+    border-radius: 8px;
+    padding: 0.35rem 0.65rem;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    margin-left: 0.8rem;
+    transition: background 0.2s, transform 0.1s;
+    flex-shrink: 0;
+}
+.btn-logout:hover {
+    background: rgba(244, 67, 54, 0.25);
+}
+.btn-logout:active {
+    transform: scale(0.95);
+}
+
 /* Main layout */
 .layout {
     display: flex;

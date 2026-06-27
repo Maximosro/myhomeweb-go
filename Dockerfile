@@ -50,7 +50,7 @@ ENV DB_PATH=/data/myhomeweb.db
 
 # Healthcheck: verifica que la raíz responde (no hay endpoint /health dedicado)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:19484/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:19484/health || exit 1
 
 # Punto de entrada
 ENTRYPOINT ["./myhomeweb"]
