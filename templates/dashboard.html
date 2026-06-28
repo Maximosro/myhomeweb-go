@@ -26,36 +26,13 @@
             <button type="button" class="search-clear" onclick="this.previousElementSibling.value='';this.previousElementSibling.focus()">&times;</button>
         </form>
         <span class="topbar-right" id="topbar-date"><span class="date-weekday" id="date-weekday"></span><span class="date-numeric" id="date-numeric"></span></span>
+        <button class="btn-add-category" id="btn-add-category" title="Añadir categoría">+</button>
         <button class="btn-logout" id="btn-logout" title="Cerrar sesión">⏻</button>
     </div>
 
     <div class="layout">
         <!-- Left sidebar -->
         <div class="sidebar sidebar-left">
-            <!-- Mis Aplicaciones widget -->
-            <div class="apps-widget">
-                <a href="http://192.168.1.136:19480/portfoliotracker/" class="app-entry" data-url="http://192.168.1.136:19480/portfoliotracker/" target="_blank">
-                    <span class="app-emoji">&#128200;</span>
-                    <span class="app-info">
-                        <span class="app-name">Portfolio Tracker</span>
-                        <span class="app-status"><span class="status-indicator"></span><span class="status-label">Checking...</span></span>
-                    </span>
-                </a>
-                <a href="http://192.168.1.136:19481/myCalendar/" class="app-entry" data-url="http://192.168.1.136:19481/myCalendar/" target="_blank">
-                    <span class="app-emoji">&#128197;</span>
-                    <span class="app-info">
-                        <span class="app-name">My Calendar</span>
-                        <span class="app-status"><span class="status-indicator"></span><span class="status-label">Checking...</span></span>
-                    </span>
-                </a>
-                <a href="http://192.168.1.136:19482/api/mynotes" class="app-entry" data-url="http://192.168.1.136:19482/api/mynotes" target="_blank">
-                    <span class="app-emoji">&#128221;</span>
-                    <span class="app-info">
-                        <span class="app-name">MyNotes</span>
-                        <span class="app-status"><span class="status-indicator"></span><span class="status-label">Checking...</span></span>
-                    </span>
-                </a>
-            </div>
             <!-- Weather widget -->
             <a href="https://www.eltiempo.es/alcala-de-guadaira.html" class="weather-widget" id="weather-widget" target="_blank" style="text-decoration:none;color:inherit">
                 <div class="weather-location">Alcalá de Guadaíra</div>
@@ -127,11 +104,6 @@
         </div>
     </div>
 
-    <!-- Floating buttons -->
-    <button class="btn-add-category" id="btn-add-category" title="Añadir categoría">+</button>
-    <button class="btn-add-category btn-import-json" id="btn-import-json" title="Importar JSON">↑</button>
-    <button class="btn-add-category btn-export-json" id="btn-export-json" title="Exportar JSON" style="bottom:7.2rem;font-size:1rem;background:linear-gradient(135deg,#66bb6a,#2e7d32);box-shadow:0 4px 16px rgba(102,187,106,0.3)">↓</button>
-    <input type="file" id="json-file-input" accept=".json" style="display:none">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/static/js/auth.js"></script>

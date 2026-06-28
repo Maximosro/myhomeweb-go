@@ -34,46 +34,6 @@
     document.getElementById('date-weekday').textContent = now.toLocaleDateString('es-ES', { weekday: 'long' }).toUpperCase();
     document.getElementById('date-numeric').textContent = now.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
 
-    // ===== App status checker =====
-    async function checkStatus(entry) {
-        const url = entry.dataset.url;
-        const dot = entry.querySelector('.status-indicator');
-        const label = entry.querySelector('.status-label');
-        // ponytail: skip HTTP URLs on HTTPS pages (Mixed Content block)
-        if (location.protocol === 'https:' && url.startsWith('http://')) {
-            dot.classList.add('offline');
-            label.textContent = 'Local';
-            label.classList.add('offline');
-            return;
-        }
-        try {
-            const ctrl = new AbortController();
-            const t = setTimeout(() => ctrl.abort(), 5000);
-            await fetch(url, { mode: 'no-cors', signal: ctrl.signal });
-            clearTimeout(t);
-            dot.classList.add('online');
-            label.textContent = 'Online';
-            label.classList.add('online');
-        } catch {
-            dot.classList.add('offline');
-            label.textContent = 'Offline';
-            label.classList.add('offline');
-        }
-    }
-
-    document.querySelectorAll('.app-entry[data-url]').forEach(checkStatus);
-
-    setInterval(() => {
-        document.querySelectorAll('.app-entry[data-url]').forEach(el => {
-            const dot = el.querySelector('.status-indicator');
-            const label = el.querySelector('.status-label');
-            dot.className = 'status-indicator';
-            label.className = 'status-label';
-            label.textContent = 'Checking...';
-            checkStatus(el);
-        });
-    }, 30000);
-
     // ===== Weather widget =====
     async function fetchWeather() {
         const lat = 37.34, lon = -5.84;
@@ -221,6 +181,7 @@
         openModal();
         setTimeout(() => document.getElementById('input-link-name').focus(), 50);
     }
+    window.openAddLinkModal = openAddLinkModal;
 
     // ===== CRUD: Delete link =====
     async function deleteLink(id) {
@@ -233,6 +194,7 @@
             else alert('Error al eliminar');
         }
     }
+    window.deleteLink = deleteLink;
 
     // ===== CRUD: Add category =====
     function openAddCategoryModal() {
@@ -264,43 +226,9 @@
             else alert('Error al eliminar');
         }
     }
+    window.deleteCategory = deleteCategory;
 
     document.getElementById('btn-add-category').addEventListener('click', openAddCategoryModal);
 
-    // ===== Export JSON =====
-    document.getElementById('btn-export-json').addEventListener('click', async () => {
-        try {
-            const data = await authFetch('GET', '/api/v1/export');
-            const json = JSON.stringify(data, null, 2);
-            const blob = new Blob([json], { type: 'application/json' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'myapps-data.json';
-            a.click();
-            URL.revokeObjectURL(a.href);
-        } catch (e) {
-            alert('Error al exportar');
-        }
-    });
-
-    // ===== Import JSON =====
-    document.getElementById('btn-import-json').addEventListener('click', () => {
-        document.getElementById('json-file-input').click();
-    });
-
-    document.getElementById('json-file-input').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-            const text = await file.text();
-            const data = JSON.parse(text);
-            const result = await authFetch('POST', '/api/v1/import', data);
-            alert('Importación completada: ' + result.categoriesImported + ' categorías, ' + result.linksImported + ' enlaces');
-            location.reload();
-        } catch (err) {
-            alert('Error al importar: ' + err.message);
-        }
-        e.target.value = '';
-    });
 
 })();
