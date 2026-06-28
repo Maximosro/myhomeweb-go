@@ -550,6 +550,25 @@ func main() {
 			return
 		}
 
+		// ponytail: accept token via query param (post-login redirect), set HTTP cookie, redirect clean
+		if tokenParam := r.URL.Query().Get("token"); tokenParam != "" {
+			if _, err := validateJWT(tokenParam); err != nil {
+				log.Printf("[auth] token from query param invalid: %v", err)
+				http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+				return
+			}
+			log.Printf("[auth] token from query param valid, setting cookie and redirecting to /")
+			http.SetCookie(w, &http.Cookie{
+				Name:     "sb-access-token",
+				Value:    tokenParam,
+				Path:     "/",
+				MaxAge:   3600,
+				SameSite: http.SameSiteLaxMode,
+			})
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+
 		// Check auth — serve login if no valid session
 		token := extractToken(r)
 		if token == "" {
