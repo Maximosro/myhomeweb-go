@@ -22,8 +22,8 @@ FROM alpine:3.21 AS runtime
 
 WORKDIR /app
 
-# Instalar wget para healthcheck
-RUN apk add --no-cache wget
+# Instalar wget (healthcheck) + ca-certificates (JWT validation vía HTTPS)
+RUN apk add --no-cache wget ca-certificates
 
 # Crear usuario no-root
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

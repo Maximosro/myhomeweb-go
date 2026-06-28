@@ -53,27 +53,42 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      - name: Deploy to VPS via SSH
+      - name: Deploy to VPS via Hostinger API
         env:
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
+          HOSTINGER_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          for i in $(seq 1 3); do
-            echo "SSH attempt $i/3..."
-            if ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=10 -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "cd /root && docker compose pull myhomeweb && docker compose up -d myhomeweb && docker compose ps myhomeweb"; then
-              echo "SSH deploy OK (attempt $i)"
-              break
-            fi
-            if [ "$i" -eq 3 ]; then
-              echo "SSH deploy FAILED after 3 attempts"
-              exit 1
-            fi
-            echo "Retrying in 10s..."
-            sleep 10
-          done
+          echo "Triggering project update on VPS..."
+          HTTP_CODE=$(curl -s -o /tmp/deploy-response.json -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${HOSTINGER_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://api.hostinger.com/api/vps/v1/virtual-machines/1158554/projects/root/update")
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+            echo "Hostinger API deploy failed (HTTP $HTTP_CODE)"
+            cat /tmp/deploy-response.json
+            exit 1
+          fi
+          echo "Deploy triggered — Hostinger API HTTP $HTTP_CODE"
+          cat /tmp/deploy-response.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploy-response.json
+
+          # Poll until deploy completes (max 90s)
+          ACTION_ID=$(cat /tmp/deploy-response.json | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])" 2>/dev/null || echo "")
+          if [ -n "$ACTION_ID" ]; then
+            for i in $(seq 1 18); do
+              sleep 5
+              STATE=$(curl -sf \
+                -H "Authorization: Bearer ${HOSTINGER_TOKEN}" \
+                "https://api.hostinger.com/api/vps/v1/virtual-machines/1158554/actions/${ACTION_ID}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))" 2>/dev/null || echo "polling")
+              echo "Deploy state: $STATE (${i}x5s)"
+              if [ "$STATE" = "success" ]; then
+                echo "Deploy completed successfully"
+                break
+              elif [ "$STATE" = "failed" ]; then
+                echo "Deploy FAILED"
+                exit 1
+              fi
+            done
+          fi
 
       - name: Smoke test
         run: |
