@@ -31,7 +31,7 @@ async function requireAuth() {
 
 async function signOut() {
     await initSupabase().auth.signOut();
-    document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax; Secure';
+    document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
     localStorage.removeItem('sb-agtkcnxmlbccbwmsuxdz-auth-token');
     window.location.href = '/login.html';
 }
@@ -43,7 +43,7 @@ async function authFetch(method, path, body) {
         const { data, error } = await initSupabase().auth.refreshSession();
         if (data.session && !error) {
             token = data.session.access_token;
-            document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + data.session.expires_in + '; SameSite=Lax; Secure';
+            document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + data.session.expires_in + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
         } else {
             signOut();
             throw new Error('No session');
@@ -65,7 +65,7 @@ async function authFetch(method, path, body) {
         const { data, error } = await initSupabase().auth.refreshSession();
         if (data.session && !error) {
             token = data.session.access_token;
-            document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + data.session.expires_in + '; SameSite=Lax; Secure';
+            document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + data.session.expires_in + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
             options.headers['Authorization'] = 'Bearer ' + token;
             const retryRes = await fetch(path, options);
             if (!retryRes.ok) {
