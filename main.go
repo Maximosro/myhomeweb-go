@@ -453,15 +453,18 @@ func extractToken(r *http.Request) string {
 func validateJWT(tokenStr string) (string, error) {
 	set, err := getJWKS()
 	if err != nil {
+		log.Printf("[auth] JWKS fetch failed: %v", err)
 		return "", err
 	}
 
+	log.Printf("[auth] JWKS retrieved, keys: %d", set.Len())
 	parsed, err := jwt.Parse([]byte(tokenStr),
 		jwt.WithKeySet(set),
 		jwt.WithAcceptableSkew(1*time.Minute),
 		jwt.WithValidate(true),
 	)
 	if err != nil {
+		log.Printf("[auth] JWT parse/validate failed: %v (token prefix: %.20s...)", err, tokenStr)
 		return "", err
 	}
 
