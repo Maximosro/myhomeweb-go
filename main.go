@@ -779,7 +779,7 @@ func main() {
 		displayOrder := n + 1
 		id := uuid.New().String()
 		_, err = db.Exec(
-			`INSERT INTO categories (id, name, icon, display_order, dashboard_id) VALUES (?, ?, ?, ?, ?)`,
+			`INSERT INTO categories (id, name, icon, display_order, is_builtin, dashboard_id) VALUES (?, ?, ?, ?, 0, ?)`,
 			id, strings.TrimSpace(input.Name), icon, displayOrder, input.DashboardID,
 		)
 		if err != nil {
@@ -878,7 +878,7 @@ func main() {
 		}
 		id := uuid.New().String()
 		_, err = db.Exec(
-			`INSERT INTO links (id, name, url, category_id, display_order) VALUES (?, ?, ?, ?, ?)`,
+			`INSERT INTO links (id, name, url, category_id, display_order, is_builtin) VALUES (?, ?, ?, ?, ?, 0)`,
 			id, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), input.CategoryID, maxOrder+1,
 		)
 		if err != nil {
