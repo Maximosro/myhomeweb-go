@@ -218,7 +218,9 @@
 
                 try {
                     const client = initSupabase();
+                    console.log('[login] calling signInWithPassword...');
                     const { data, error } = await client.auth.signInWithPassword({ email, password });
+                    console.log('[login] signIn result:', { hasData: !!data, hasSession: !!data?.session, error: error?.message || 'none' });
                     if (error) {
                         errorMsg.textContent = error.message === 'Invalid login credentials'
                             ? 'Email o contraseña incorrectos'
@@ -232,11 +234,14 @@
                         const { data: { session: fullSession } } = await client.auth.getSession();
                         const token = fullSession?.access_token || data.session.access_token;
                         const maxAge = fullSession?.expires_in || data.session.expires_in || 3600;
+                        console.log('[login] token length:', token?.length, 'maxAge:', maxAge);
                         sessionStorage.setItem('login-redirect-attempted', '1');
                         document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + maxAge + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+                        console.log('[login] cookie set, redirecting...');
                         window.location.href = '/';
                     }
                 } catch (err) {
+                    console.log('[login] exception:', err.message);
                     errorMsg.textContent = 'Error de conexión. Inténtalo de nuevo.';
                     errorMsg.classList.add('visible');
                     btn.disabled = false;
@@ -248,10 +253,12 @@
         // ── Auto-redirect if already logged in (async, non-blocking) ──
         (async function() {
             try {
-                if (typeof supabase === 'undefined') return;
+                if (typeof supabase === 'undefined') { console.log('[auto] supabase SDK not loaded'); return; }
+                console.log('[auto] checking existing session...');
                 const client = initSupabase();
 
                 if (sessionStorage.getItem('login-redirect-attempted')) {
+                    console.log('[auto] found login-redirect-attempted flag, showing error');
                     sessionStorage.removeItem('login-redirect-attempted');
                     var errorMsg = document.getElementById('error-msg');
                     if (errorMsg) {
@@ -275,6 +282,7 @@
                     document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
                 }
             } catch (e) {
+                console.log('[auto] exception:', e.message);
                 // SDK not loaded or Supabase unreachable — stay on login page
             }
         })();

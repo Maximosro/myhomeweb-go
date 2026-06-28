@@ -7,3 +7,4 @@ myhomeweb
 # RPI plans (stored in C:\Workspace\PLANS\)
 plans/
 .playwright-mcp/
+data/

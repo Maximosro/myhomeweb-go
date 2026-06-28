@@ -553,6 +553,7 @@ func main() {
 		// Check auth — serve login if no valid session
 		token := extractToken(r)
 		if token == "" {
+			log.Printf("[auth] no token in request (cookie=%s, auth_header=%s)", r.Header.Get("Cookie"), r.Header.Get("Authorization"))
 			http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
 			return
 		}
