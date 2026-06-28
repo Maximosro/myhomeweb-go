@@ -57,18 +57,32 @@ jobs:
         env:
           HOSTINGER_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
         run: |
-          echo "Triggering project update on VPS..."
-          HTTP_CODE=$(curl -s -o /tmp/deploy-response.json -w "%{http_code}" \
-            -X POST \
-            -H "Authorization: Bearer ${HOSTINGER_TOKEN}" \
-            -H "Content-Type: application/json" \
-            "https://api.hostinger.com/api/vps/v1/virtual-machines/1158554/projects/root/update")
-          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-            echo "Hostinger API deploy failed (HTTP $HTTP_CODE)"
-            cat /tmp/deploy-response.json
-            exit 1
-          fi
-          echo "Deploy triggered — Hostinger API HTTP $HTTP_CODE"
+          # Retry wrapper — Hostinger API sometimes returns Cloudflare 530
+          deploy_api() {
+            curl -s -o /tmp/deploy-response.json -w "%{http_code}" \
+              -X POST \
+              -H "Authorization: Bearer ${HOSTINGER_TOKEN}" \
+              -H "Content-Type: application/json" \
+              "https://api.hostinger.com/api/vps/v1/virtual-machines/1158554/projects/root/update"
+          }
+
+          for attempt in $(seq 1 5); do
+            echo "Deploy attempt $attempt/5..."
+            HTTP_CODE=$(deploy_api)
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+              echo "Deploy triggered — HTTP $HTTP_CODE"
+              break
+            fi
+            echo "Hostinger API returned HTTP $HTTP_CODE (attempt $attempt)"
+            cat /tmp/deploy-response.json 2>/dev/null || true
+            if [ "$attempt" -eq 5 ]; then
+              echo "Deploy FAILED after 5 attempts"
+              exit 1
+            fi
+            echo "Retrying in 10s..."
+            sleep 10
+          done
+
           cat /tmp/deploy-response.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploy-response.json
 
           # Poll until deploy completes (max 90s)
