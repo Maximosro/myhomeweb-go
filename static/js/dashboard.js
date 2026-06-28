@@ -12,7 +12,7 @@
     try {
         const { data: { session } } = await initSupabase().auth.getSession();
         if (session) {
-            document.cookie = 'sb-access-token=' + session.access_token + '; path=/; max-age=' + session.expires_in + '; SameSite=Lax';
+            document.cookie = 'sb-access-token=' + session.access_token + '; path=/; max-age=' + session.expires_in + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
         }
     } catch (e) {
         // Supabase unreachable — continue with token from localStorage
