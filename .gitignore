@@ -8,3 +8,6 @@ myhomeweb
 plans/
 .playwright-mcp/
 data/
+data/myhomeweb.db-wal
+data/myhomeweb.db-shm
+/data
