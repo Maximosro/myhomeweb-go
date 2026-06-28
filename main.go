@@ -475,6 +475,12 @@ func validateJWT(tokenStr string) (string, error) {
 	return sub, nil
 }
 
+// serveLogin sets no-cache and serves login.html to prevent browser caching stale code
+func serveLogin(w http.ResponseWriter, r *http.Request, staticDir string) {
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+}
+
 func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := extractToken(r)
@@ -539,7 +545,7 @@ func main() {
 
 	// Login page (public)
 	mux.HandleFunc("GET /login.html", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+		serveLogin(w, r, staticDir)
 	})
 
 	// Home (SSR) — serves dashboard if authenticated, login page otherwise
@@ -554,7 +560,7 @@ func main() {
 		if tokenParam := r.URL.Query().Get("token"); tokenParam != "" {
 			if _, err := validateJWT(tokenParam); err != nil {
 				log.Printf("[auth] token from query param invalid: %v", err)
-				http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+				serveLogin(w, r, staticDir)
 				return
 			}
 			log.Printf("[auth] token from query param valid, setting cookie and redirecting to /")
@@ -573,12 +579,12 @@ func main() {
 		token := extractToken(r)
 		if token == "" {
 			log.Printf("[auth] no token in request (cookie=%s, auth_header=%s)", r.Header.Get("Cookie"), r.Header.Get("Authorization"))
-			http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+			serveLogin(w, r, staticDir)
 			return
 		}
 		if _, err := validateJWT(token); err != nil {
 			log.Printf("[auth] JWT validation failed: %v", err)
-			http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+			serveLogin(w, r, staticDir)
 			return
 		}
 
