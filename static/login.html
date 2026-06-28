@@ -231,14 +231,15 @@
                         return;
                     }
                     if (data.session) {
-                        const { data: { session: fullSession } } = await client.auth.getSession();
-                        const token = fullSession?.access_token || data.session.access_token;
-                        const maxAge = fullSession?.expires_in || data.session.expires_in || 3600;
-                        console.log('[login] token length:', token?.length, 'maxAge:', maxAge);
+                        // ponytail: pass token via query param — the backend sets the cookie via HTTP header
+                        const token = data.session.access_token;
+                        console.log('[login] token length:', token?.length);
                         sessionStorage.setItem('login-redirect-attempted', '1');
+                        // Also set cookie as fallback for same-origin API calls
+                        const maxAge = data.session.expires_in || 3600;
                         document.cookie = 'sb-access-token=' + token + '; path=/; max-age=' + maxAge + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
-                        console.log('[login] cookie set, redirecting...');
-                        window.location.href = '/';
+                        console.log('[login] redirecting with token...');
+                        window.location.href = '/?token=' + encodeURIComponent(token);
                     }
                 } catch (err) {
                     console.log('[login] exception:', err.message);
@@ -257,24 +258,27 @@
                 console.log('[auto] checking existing session...');
                 const client = initSupabase();
 
+                // If we landed back on login after a redirect attempt,
+                // the token was rejected by the backend — clear and let user re-login
                 if (sessionStorage.getItem('login-redirect-attempted')) {
-                    console.log('[auto] found login-redirect-attempted flag, showing error');
+                    console.log('[auto] redirect-attempted flag found, session was rejected by server');
                     sessionStorage.removeItem('login-redirect-attempted');
-                    var errorMsg = document.getElementById('error-msg');
-                    if (errorMsg) {
-                        errorMsg.textContent = 'Sesión no válida. Inicia sesión de nuevo.';
-                        errorMsg.classList.add('visible');
-                    }
                     await client.auth.signOut();
                     document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+                    var errorMsg = document.getElementById('error-msg');
+                    if (errorMsg) {
+                        errorMsg.textContent = 'Tu sesión expiró. Inicia sesión de nuevo.';
+                        errorMsg.classList.add('visible');
+                    }
                     return;
                 }
 
                 const { data: { session } } = await client.auth.getSession();
                 if (session && session.expires_at && session.expires_at > Math.floor(Date.now() / 1000)) {
+                    // ponytail: pass token via query param so backend sets cookie via HTTP header
                     sessionStorage.setItem('login-redirect-attempted', '1');
-                    document.cookie = 'sb-access-token=' + session.access_token + '; path=/; max-age=' + session.expires_in + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
-                    window.location.href = '/';
+                    document.cookie = 'sb-access-token=' + session.access_token + '; path=/; max-age=' + (session.expires_in || 3600) + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+                    window.location.href = '/?token=' + encodeURIComponent(session.access_token);
                     return;
                 }
                 if (session) {
