@@ -554,6 +554,7 @@ func main() {
 			return
 		}
 		if _, err := validateJWT(token); err != nil {
+			log.Printf("[auth] JWT validation failed: %v", err)
 			http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
 			return
 		}
