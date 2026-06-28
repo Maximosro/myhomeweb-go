@@ -21,6 +21,12 @@
             </svg>
             <span class="logo-text">My Apps</span>
         </div>
+        <nav class="dashboard-tabs" id="dashboard-tabs">
+            {{range .Dashboards}}
+            <a href="/dashboard/{{.ID}}" class="tab{{if eq .ID $.ActiveDashboardID}} active{{end}}" data-dashboard-id="{{.ID}}">{{.Name}}</a>
+            {{end}}
+            <button class="tab tab-add" id="btn-add-dashboard" title="Nuevo dashboard">+</button>
+        </nav>
         <form class="search-form" action="https://www.google.com/search" method="GET" target="_blank">
             <input type="text" name="q" id="search-input" placeholder="Buscar en Google..." autocomplete="off" autofocus>
             <button type="button" class="search-clear" onclick="this.previousElementSibling.value='';this.previousElementSibling.focus()">&times;</button>
@@ -65,26 +71,22 @@
         </div>
 
         <!-- Main grid: rendered from server -->
-        <div class="main" id="main-grid">
+        <div class="main" id="main-grid" data-dashboard-id="{{.ActiveDashboardID}}">
             {{range .Categories}}
             <div class="category" data-category-id="{{.ID}}">
                 <div class="category-header">
                     <span class="category-icon">{{.Icon}}</span>
                     <span class="category-title">{{.Name}}</span>
                     <button class="btn-add-link" title="Añadir enlace" onclick="openAddLinkModal(this.closest('.category'))">+</button>
-                    {{if not .Builtin}}
                     <button class="btn-delete-cat" title="Eliminar categoría" onclick="deleteCategory('{{.ID}}')">×</button>
-                    {{end}}
                 </div>
                 {{range .Links}}
                 <a href="{{.URL}}" class="link-item" target="_blank"
-                   data-link-id="{{.ID}}" data-is-builtin="{{.Builtin}}">
+                   data-link-id="{{.ID}}">
                     <img src="https://www.google.com/s2/favicons?domain={{.Domain}}&sz=64" alt="">
                     <span>{{.Name}}</span>
-                    {{if not .Builtin}}
                     <button class="btn-delete-link" title="Eliminar"
                             onclick="event.preventDefault();event.stopPropagation();deleteLink('{{.ID}}')">×</button>
-                    {{end}}
                 </a>
                 {{end}}
             </div>
