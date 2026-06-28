@@ -117,9 +117,12 @@ func initDB(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening db: %w", err)
 	}
 
+	// ponytail: foreign_keys OFF — Go-level checks (dashboardExists, categoryExists)
+	// already validate referential integrity; FK pragma can cause
+	// hard-to-diagnose 500s on some modernc.org/sqlite builds.
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL",
-		"PRAGMA foreign_keys=ON",
+		"PRAGMA foreign_keys=OFF",
 		"PRAGMA busy_timeout=5000",
 	}
 	for _, p := range pragmas {
@@ -631,6 +634,7 @@ func main() {
 		_, err = db.Exec(`INSERT INTO dashboards (id, name, display_order) VALUES (?, ?, ?)`,
 			id, strings.TrimSpace(input.Name), n+1)
 		if err != nil {
+			log.Printf("[api] POST /dashboards insert: %v", err)
 			jsonError(w, "Failed to create dashboard", 500)
 			return
 		}
@@ -663,6 +667,7 @@ func main() {
 		}
 		_, err = db.Exec(`UPDATE dashboards SET name = ? WHERE id = ?`, strings.TrimSpace(input.Name), id)
 		if err != nil {
+			log.Printf("[api] PUT /dashboards update: %v", err)
 			jsonError(w, "Failed to update dashboard", 500)
 			return
 		}
@@ -686,18 +691,22 @@ func main() {
 		}
 		defer tx.Rollback()
 		if _, err := tx.Exec(`DELETE FROM links WHERE category_id IN (SELECT id FROM categories WHERE dashboard_id = ?)`, id); err != nil {
+			log.Printf("[api] DELETE /dashboards links cascade: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
 		if _, err := tx.Exec(`DELETE FROM categories WHERE dashboard_id = ?`, id); err != nil {
+			log.Printf("[api] DELETE /dashboards categories cascade: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
 		if _, err := tx.Exec(`DELETE FROM dashboards WHERE id = ?`, id); err != nil {
+			log.Printf("[api] DELETE /dashboards: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
 		if err := tx.Commit(); err != nil {
+			log.Printf("[api] DELETE /dashboards commit: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
@@ -774,6 +783,7 @@ func main() {
 			id, strings.TrimSpace(input.Name), icon, displayOrder, input.DashboardID,
 		)
 		if err != nil {
+			log.Printf("[api] POST /categories insert: %v", err)
 			jsonError(w, "Failed to create category", 500)
 			return
 		}
@@ -803,19 +813,23 @@ func main() {
 		}
 		tx, err := db.Begin()
 		if err != nil {
+			log.Printf("[api] DELETE /categories begin tx: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
 		defer tx.Rollback()
 		if _, err := tx.Exec(`DELETE FROM links WHERE category_id = ?`, id); err != nil {
+			log.Printf("[api] DELETE /categories links cascade: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
 		if _, err := tx.Exec(`DELETE FROM categories WHERE id = ?`, id); err != nil {
+			log.Printf("[api] DELETE /categories: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
 		if err := tx.Commit(); err != nil {
+			log.Printf("[api] DELETE /categories commit: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
@@ -868,6 +882,7 @@ func main() {
 			id, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), input.CategoryID, maxOrder+1,
 		)
 		if err != nil {
+			log.Printf("[api] POST /links insert: %v", err)
 			jsonError(w, "Failed to create link", 500)
 			return
 		}
@@ -894,6 +909,7 @@ func main() {
 			return
 		}
 		if _, err := db.Exec(`DELETE FROM links WHERE id = ?`, id); err != nil {
+			log.Printf("[api] DELETE /links: %v", err)
 			jsonError(w, "Internal error", 500)
 			return
 		}
