@@ -125,6 +125,9 @@ body::before {
     flex-direction: column;
     align-items: flex-end;
     line-height: 1.1;
+    padding-right: 0.65rem;
+    border-right: 1px solid rgba(255,255,255,0.08);
+    margin-right: 0.25rem;
 }
 
 .date-weekday {
@@ -263,97 +266,6 @@ body::before {
     text-overflow: ellipsis;
 }
 
-/* Status dot */
-.status-indicator {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    margin-left: auto;
-    flex-shrink: 0;
-    background: #555;
-}
-
-.status-indicator.online {
-    background: #4caf50;
-    box-shadow: 0 0 6px rgba(76,175,80,0.5);
-}
-
-.status-indicator.offline {
-    background: #f44336;
-}
-
-/* Apps widget */
-.apps-widget {
-    background: rgba(10, 10, 30, 0.55);
-    border: 1px solid rgba(102,126,234,0.2);
-    border-radius: 14px;
-    padding: 0.8rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-
-.app-entry {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.5rem 0.6rem;
-    border-radius: 8px;
-    text-decoration: none;
-    color: #ddd;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.04);
-    transition: all 0.15s ease;
-}
-
-.app-entry:hover {
-    background: rgba(102,126,234,0.08);
-    border-color: rgba(102,126,234,0.2);
-    color: #fff;
-}
-
-.app-entry .app-emoji {
-    font-size: 1.1rem;
-    line-height: 1;
-}
-
-.app-entry .app-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.app-entry .app-name {
-    font-size: 0.75rem;
-    font-weight: 550;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.app-entry .app-status {
-    font-size: 0.6rem;
-    color: #666;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-}
-
-.app-entry .app-status .status-indicator {
-    width: 6px;
-    height: 6px;
-    margin-left: 0;
-}
-
-.app-entry .app-status .status-label {
-    font-size: 0.6rem;
-    color: #666;
-}
-
-.app-entry .app-status .status-label.online { color: #4caf50; }
-.app-entry .app-status .status-label.offline { color: #f44336; }
 
 /* Weather widget */
 .weather-widget {
@@ -586,40 +498,27 @@ body::before {
 .btn-delete-link:hover { background: rgba(244,67,54,0.15); color: #f44336; }
 
 .btn-add-category {
-    position: fixed;
-    bottom: 1.2rem;
-    right: 1.4rem;
-    width: 40px;
-    height: 40px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     border: none;
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: #fff;
-    font-size: 1.4rem;
+    font-size: 1.1rem;
+    line-height: 1;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(102,126,234,0.3);
+    box-shadow: 0 2px 8px rgba(102,126,234,0.3);
     display: flex;
     align-items: center;
     justify-content: center;
+    margin-left: 0.25rem;
     transition: transform 0.15s, box-shadow 0.15s;
-    z-index: 100;
+    flex-shrink: 0;
 }
-
 .btn-add-category:hover {
     transform: scale(1.1);
-    box-shadow: 0 6px 24px rgba(102,126,234,0.4);
+    box-shadow: 0 4px 14px rgba(102,126,234,0.45);
 }
-
-.btn-import-json {
-    bottom: 4.2rem;
-    font-size: 1.1rem;
-    background: linear-gradient(135deg, #42a5f5, #1565c0);
-    box-shadow: 0 4px 16px rgba(66,165,245,0.3);
-}
-
-.btn-import-json:hover { box-shadow: 0 6px 24px rgba(66,165,245,0.4); }
-
-.btn-export-json:hover { box-shadow: 0 6px 24px rgba(102,187,106,0.4); }
 
 /* Modal */
 .modal-overlay {
