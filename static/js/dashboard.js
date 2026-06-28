@@ -39,6 +39,13 @@
         const url = entry.dataset.url;
         const dot = entry.querySelector('.status-indicator');
         const label = entry.querySelector('.status-label');
+        // ponytail: skip HTTP URLs on HTTPS pages (Mixed Content block)
+        if (location.protocol === 'https:' && url.startsWith('http://')) {
+            dot.classList.add('offline');
+            label.textContent = 'Local';
+            label.classList.add('offline');
+            return;
+        }
         try {
             const ctrl = new AbortController();
             const t = setTimeout(() => ctrl.abort(), 5000);
