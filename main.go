@@ -29,7 +29,7 @@ type Category struct {
 	Name         string `json:"name"`
 	Icon         string `json:"icon"`
 	DisplayOrder int    `json:"displayOrder"`
-	IsBuiltin    bool   `json:"builtin"`
+	DashboardID  string `json:"dashboardId"`
 	Links        []Link `json:"links"`
 }
 
@@ -40,8 +40,18 @@ type Link struct {
 	Domain       string `json:"domain"`
 	CategoryID   string `json:"categoryId"`
 	DisplayOrder int    `json:"displayOrder"`
-	IsBuiltin    bool   `json:"builtin"`
-	CategoryName string `json:"-"` // ponytail: internal, for export
+}
+
+type Dashboard struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	DisplayOrder int    `json:"displayOrder"`
+}
+
+type DashboardDTO struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	DisplayOrder int    `json:"displayOrder"`
 }
 
 type CategoryDTO struct {
@@ -49,7 +59,6 @@ type CategoryDTO struct {
 	Name         string    `json:"name"`
 	Icon         string    `json:"icon"`
 	DisplayOrder int       `json:"displayOrder"`
-	Builtin      bool      `json:"builtin"`
 	Links        []LinkDTO `json:"links"`
 }
 
@@ -60,23 +69,6 @@ type LinkDTO struct {
 	Domain       string `json:"domain"`
 	CategoryID   string `json:"categoryId"`
 	DisplayOrder int    `json:"displayOrder"`
-	Builtin      bool   `json:"builtin"`
-}
-
-type ExportDTO struct {
-	Categories []CategoryExport `json:"categories"`
-	Links      []LinkExport     `json:"links"`
-}
-
-type CategoryExport struct {
-	Name string `json:"name"`
-	Icon string `json:"icon"`
-}
-
-type LinkExport struct {
-	Name     string `json:"name"`
-	URL      string `json:"url"`
-	Category string `json:"category"`
 }
 
 // ─────────────────── Helpers ───────────────────
@@ -138,12 +130,18 @@ func initDB(dbPath string) (*sql.DB, error) {
 	}
 
 	schema := `
+	CREATE TABLE IF NOT EXISTS dashboards (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		display_order INTEGER NOT NULL
+	);
 	CREATE TABLE IF NOT EXISTS categories (
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
 		icon TEXT NOT NULL,
 		display_order INTEGER NOT NULL,
-		is_builtin INTEGER NOT NULL
+		is_builtin INTEGER NOT NULL DEFAULT 0,
+		dashboard_id TEXT NOT NULL DEFAULT 'd0000000-0000-0000-0000-000000000001' REFERENCES dashboards(id)
 	);
 	CREATE TABLE IF NOT EXISTS links (
 		id TEXT PRIMARY KEY,
@@ -151,12 +149,22 @@ func initDB(dbPath string) (*sql.DB, error) {
 		url TEXT NOT NULL,
 		category_id TEXT NOT NULL REFERENCES categories(id),
 		display_order INTEGER NOT NULL,
-		is_builtin INTEGER NOT NULL
+		is_builtin INTEGER NOT NULL DEFAULT 0
 	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("creating schema: %w", err)
+	}
+
+	// Migration: add dashboard_id to existing categories (idempotent)
+	// ponytail: no REFERENCES in ALTER TABLE — SQLite rejects it with non-NULL default
+	if _, err := db.Exec(`ALTER TABLE categories ADD COLUMN dashboard_id TEXT NOT NULL DEFAULT 'd0000000-0000-0000-0000-000000000001'`); err != nil {
+		// ponytail: "duplicate column name" means already migrated — that's OK
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			db.Close()
+			return nil, fmt.Errorf("migration add dashboard_id: %w", err)
+		}
 	}
 
 	return db, nil
@@ -182,8 +190,11 @@ type querier interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
 
-func loadCategories(db *sql.DB) ([]Category, error) {
-	rows, err := db.Query(`SELECT id, name, icon, display_order, is_builtin FROM categories ORDER BY display_order ASC`)
+func loadCategories(db *sql.DB, dashboardID string) ([]Category, error) {
+	rows, err := db.Query(
+		`SELECT id, name, icon, display_order, dashboard_id FROM categories WHERE dashboard_id = ? ORDER BY display_order ASC`,
+		dashboardID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -192,11 +203,9 @@ func loadCategories(db *sql.DB) ([]Category, error) {
 	var cats []Category
 	for rows.Next() {
 		var c Category
-		var builtin int
-		if err := rows.Scan(&c.ID, &c.Name, &c.Icon, &c.DisplayOrder, &builtin); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Icon, &c.DisplayOrder, &c.DashboardID); err != nil {
 			return nil, err
 		}
-		c.IsBuiltin = builtin == 1
 		cats = append(cats, c)
 	}
 
@@ -212,7 +221,7 @@ func loadCategories(db *sql.DB) ([]Category, error) {
 
 func loadLinksByCategory(db *sql.DB, categoryID string) ([]Link, error) {
 	rows, err := db.Query(
-		`SELECT id, name, url, category_id, display_order, is_builtin FROM links WHERE category_id = ? ORDER BY display_order ASC`,
+		`SELECT id, name, url, category_id, display_order FROM links WHERE category_id = ? ORDER BY display_order ASC`,
 		categoryID,
 	)
 	if err != nil {
@@ -223,12 +232,10 @@ func loadLinksByCategory(db *sql.DB, categoryID string) ([]Link, error) {
 	var links []Link
 	for rows.Next() {
 		var l Link
-		var builtin int
-		if err := rows.Scan(&l.ID, &l.Name, &l.URL, &l.CategoryID, &l.DisplayOrder, &builtin); err != nil {
+		if err := rows.Scan(&l.ID, &l.Name, &l.URL, &l.CategoryID, &l.DisplayOrder); err != nil {
 			return nil, err
 		}
 		l.Domain = extractDomain(l.URL)
-		l.IsBuiltin = builtin == 1
 		links = append(links, l)
 	}
 	if links == nil {
@@ -243,7 +250,6 @@ func categoryToDTO(c Category) CategoryDTO {
 		Name:         c.Name,
 		Icon:         c.Icon,
 		DisplayOrder: c.DisplayOrder,
-		Builtin:      c.IsBuiltin,
 		Links:        make([]LinkDTO, len(c.Links)),
 	}
 	for i, l := range c.Links {
@@ -263,13 +269,12 @@ func linkToDTO(l Link) LinkDTO {
 		Domain:       l.Domain,
 		CategoryID:   l.CategoryID,
 		DisplayOrder: l.DisplayOrder,
-		Builtin:      l.IsBuiltin,
 	}
 }
 
-func countCategories(q querier) (int, error) {
+func countCategories(q querier, dashboardID string) (int, error) {
 	var n int
-	err := q.QueryRow(`SELECT COUNT(*) FROM categories`).Scan(&n)
+	err := q.QueryRow(`SELECT COUNT(*) FROM categories WHERE dashboard_id = ?`, dashboardID).Scan(&n)
 	return n, err
 }
 
@@ -291,108 +296,41 @@ func categoryExists(db *sql.DB, id string) (bool, error) {
 	return n > 0, err
 }
 
-func getCategoryBuiltin(db *sql.DB, id string) (bool, bool, error) {
-	var builtin int
-	err := db.QueryRow(`SELECT is_builtin FROM categories WHERE id = ?`, id).Scan(&builtin)
-	if err == sql.ErrNoRows {
-		return false, false, nil
-	}
-	if err != nil {
-		return false, false, err
-	}
-	return builtin == 1, true, nil
-}
-
-func getLinkBuiltin(db *sql.DB, id string) (bool, bool, error) {
-	var builtin int
-	err := db.QueryRow(`SELECT is_builtin FROM links WHERE id = ?`, id).Scan(&builtin)
-	if err == sql.ErrNoRows {
-		return false, false, nil
-	}
-	if err != nil {
-		return false, false, err
-	}
-	return builtin == 1, true, nil
-}
-
-func categoryExistsByName(q querier, name string) (bool, error) {
+func dashboardExists(db *sql.DB, id string) (bool, error) {
 	var n int
-	err := q.QueryRow(`SELECT COUNT(*) FROM categories WHERE LOWER(name) = LOWER(?)`, name).Scan(&n)
+	err := db.QueryRow(`SELECT COUNT(*) FROM dashboards WHERE id = ?`, id).Scan(&n)
 	return n > 0, err
 }
 
-func findCategoryByName(q querier, name string) (*Category, error) {
-	var c Category
-	var builtin int
-	err := q.QueryRow(
-		`SELECT id, name, icon, display_order, is_builtin FROM categories WHERE LOWER(name) = LOWER(?) ORDER BY display_order LIMIT 1`,
-		name,
-	).Scan(&c.ID, &c.Name, &c.Icon, &c.DisplayOrder, &builtin)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	c.IsBuiltin = builtin == 1
-	return &c, nil
-}
-
-func linkExists(q querier, linkURL, categoryID string) (bool, error) {
-	var n int
-	err := q.QueryRow(`SELECT COUNT(*) FROM links WHERE url = ? AND category_id = ?`, linkURL, categoryID).Scan(&n)
-	return n > 0, err
-}
-
-func loadCustomCategories(db *sql.DB) ([]Category, error) {
-	rows, err := db.Query(`SELECT id, name, icon, display_order, is_builtin FROM categories WHERE is_builtin = 0 ORDER BY display_order ASC`)
+func loadDashboards(db *sql.DB) ([]Dashboard, error) {
+	rows, err := db.Query(`SELECT id, name, display_order FROM dashboards ORDER BY display_order ASC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var cats []Category
+	var dashboards []Dashboard
 	for rows.Next() {
-		var c Category
-		var builtin int
-		if err := rows.Scan(&c.ID, &c.Name, &c.Icon, &c.DisplayOrder, &builtin); err != nil {
+		var d Dashboard
+		if err := rows.Scan(&d.ID, &d.Name, &d.DisplayOrder); err != nil {
 			return nil, err
 		}
-		c.IsBuiltin = builtin == 1
-		cats = append(cats, c)
+		dashboards = append(dashboards, d)
 	}
-	return cats, nil
+	return dashboards, nil
 }
 
-func loadCustomLinks(db *sql.DB) ([]Link, error) {
-	rows, err := db.Query(
-		`SELECT l.id, l.name, l.url, l.category_id, l.display_order, l.is_builtin, c.name
-		 FROM links l JOIN categories c ON l.category_id = c.id
-		 WHERE l.is_builtin = 0 ORDER BY l.display_order ASC`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var links []Link
-	for rows.Next() {
-		var l Link
-		var builtin int
-		var catName string
-		if err := rows.Scan(&l.ID, &l.Name, &l.URL, &l.CategoryID, &l.DisplayOrder, &builtin, &catName); err != nil {
-			return nil, err
-		}
-		l.Domain = extractDomain(l.URL)
-		l.IsBuiltin = builtin == 1
-		l.CategoryName = catName
-		links = append(links, l)
-	}
-	return links, nil
+func countDashboards(q querier) (int, error) {
+	var n int
+	err := q.QueryRow(`SELECT COUNT(*) FROM dashboards`).Scan(&n)
+	return n, err
 }
 
 // ─────────────────── templateData ───────────────────
 
 type dashboardData struct {
-	Categories []CategoryDTO
+	Dashboards        []DashboardDTO
+	ActiveDashboardID string
+	Categories        []CategoryDTO
 }
 
 // ─────────────────── Auth ───────────────────
@@ -475,6 +413,12 @@ func validateJWT(tokenStr string) (string, error) {
 	return sub, nil
 }
 
+// serveLogin sets no-cache and serves login.html to prevent browser caching stale code
+func serveLogin(w http.ResponseWriter, r *http.Request, staticDir string) {
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+}
+
 func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := extractToken(r)
@@ -539,10 +483,10 @@ func main() {
 
 	// Login page (public)
 	mux.HandleFunc("GET /login.html", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+		serveLogin(w, r, staticDir)
 	})
 
-	// Home (SSR) — serves dashboard if authenticated, login page otherwise
+	// Home (SSR) — redirect to first dashboard if authenticated, login page otherwise
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		// ponytail: only handle exact "/", let 404 handler catch the rest
 		if r.URL.Path != "/" {
@@ -554,7 +498,7 @@ func main() {
 		if tokenParam := r.URL.Query().Get("token"); tokenParam != "" {
 			if _, err := validateJWT(tokenParam); err != nil {
 				log.Printf("[auth] token from query param invalid: %v", err)
-				http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+				serveLogin(w, r, staticDir)
 				return
 			}
 			log.Printf("[auth] token from query param valid, setting cookie and redirecting to /")
@@ -572,39 +516,204 @@ func main() {
 		// Check auth — serve login if no valid session
 		token := extractToken(r)
 		if token == "" {
-			log.Printf("[auth] no token in request (cookie=%s, auth_header=%s)", r.Header.Get("Cookie"), r.Header.Get("Authorization"))
-			http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+			serveLogin(w, r, staticDir)
 			return
 		}
 		if _, err := validateJWT(token); err != nil {
-			log.Printf("[auth] JWT validation failed: %v", err)
-			http.ServeFile(w, r, filepath.Join(staticDir, "login.html"))
+			serveLogin(w, r, staticDir)
 			return
 		}
 
-		// Authenticated — render dashboard
-		cats, err := loadCategories(db)
+		// Authenticated — redirect to first dashboard
+		dashboards, err := loadDashboards(db)
+		if err != nil || len(dashboards) == 0 {
+			http.Redirect(w, r, "/dashboard/_empty", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/dashboard/"+dashboards[0].ID, http.StatusFound)
+	})
+
+	// Dashboard SSR
+	mux.HandleFunc("GET /dashboard/{id}", func(w http.ResponseWriter, r *http.Request) {
+		dashboardID := r.PathValue("id")
+
+		// Check auth
+		token := extractToken(r)
+		if token == "" {
+			serveLogin(w, r, staticDir)
+			return
+		}
+		if _, err := validateJWT(token); err != nil {
+			serveLogin(w, r, staticDir)
+			return
+		}
+
+		// Load dashboards for tabs
+		dashboards, err := loadDashboards(db)
 		if err != nil {
-			log.Printf("[home] error loading categories: %v", err)
+			log.Printf("[dashboard] error loading dashboards: %v", err)
 			http.Error(w, "Internal Server Error", 500)
 			return
 		}
-		dtos := make([]CategoryDTO, len(cats))
-		for i, c := range cats {
-			dtos[i] = categoryToDTO(c)
+
+		// Load categories for this dashboard
+		var cats []Category
+		if dashboardID != "_empty" {
+			cats, err = loadCategories(db, dashboardID)
+			if err != nil {
+				log.Printf("[dashboard] error loading categories: %v", err)
+				http.Error(w, "Internal Server Error", 500)
+				return
+			}
 		}
+
+		// Build DTOs
+		dashDTOs := make([]DashboardDTO, len(dashboards))
+		for i, d := range dashboards {
+			dashDTOs[i] = DashboardDTO{ID: d.ID, Name: d.Name, DisplayOrder: d.DisplayOrder}
+		}
+		catDTOs := make([]CategoryDTO, len(cats))
+		for i, c := range cats {
+			catDTOs[i] = categoryToDTO(c)
+		}
+
 		var buf bytes.Buffer
-		if err := tmpl.ExecuteTemplate(&buf, "dashboard.html", dashboardData{Categories: dtos}); err != nil {
-			log.Printf("[home] template error: %v", err)
+		if err := tmpl.ExecuteTemplate(&buf, "dashboard.html", dashboardData{
+			Dashboards:        dashDTOs,
+			ActiveDashboardID: dashboardID,
+			Categories:        catDTOs,
+		}); err != nil {
+			log.Printf("[dashboard] template error: %v", err)
 			http.Error(w, "Internal Server Error", 500)
 			return
 		}
 		buf.WriteTo(w)
 	})
 
+	// ─── Dashboard API ───
+
+	// GET /api/v1/dashboards
+	mux.HandleFunc("GET /api/v1/dashboards", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		dashboards, err := loadDashboards(db)
+		if err != nil {
+			jsonError(w, "Internal server error", 500)
+			return
+		}
+		dtos := make([]DashboardDTO, len(dashboards))
+		for i, d := range dashboards {
+			dtos[i] = DashboardDTO{ID: d.ID, Name: d.Name, DisplayOrder: d.DisplayOrder}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(dtos)
+	}))
+
+	// POST /api/v1/dashboards
+	mux.HandleFunc("POST /api/v1/dashboards", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		var input struct{ Name string `json:"name"` }
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			jsonError(w, "Invalid JSON", 400)
+			return
+		}
+		if strings.TrimSpace(input.Name) == "" {
+			jsonError(w, "Name is required", 400)
+			return
+		}
+		if len(input.Name) > maxNameLen {
+			jsonError(w, "Name too long", 400)
+			return
+		}
+		n, err := countDashboards(db)
+		if err != nil {
+			jsonError(w, "Internal error", 500)
+			return
+		}
+		id := uuid.New().String()
+		_, err = db.Exec(`INSERT INTO dashboards (id, name, display_order) VALUES (?, ?, ?)`,
+			id, strings.TrimSpace(input.Name), n+1)
+		if err != nil {
+			jsonError(w, "Failed to create dashboard", 500)
+			return
+		}
+		dto := DashboardDTO{ID: id, Name: strings.TrimSpace(input.Name), DisplayOrder: n + 1}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		json.NewEncoder(w).Encode(dto)
+	}))
+
+	// PUT /api/v1/dashboards/{id}
+	mux.HandleFunc("PUT /api/v1/dashboards/{id}", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		exists, err := dashboardExists(db, id)
+		if err != nil || !exists {
+			jsonError(w, "Not found", 404)
+			return
+		}
+		var input struct{ Name string `json:"name"` }
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			jsonError(w, "Invalid JSON", 400)
+			return
+		}
+		if strings.TrimSpace(input.Name) == "" {
+			jsonError(w, "Name is required", 400)
+			return
+		}
+		if len(input.Name) > maxNameLen {
+			jsonError(w, "Name too long", 400)
+			return
+		}
+		_, err = db.Exec(`UPDATE dashboards SET name = ? WHERE id = ?`, strings.TrimSpace(input.Name), id)
+		if err != nil {
+			jsonError(w, "Failed to update dashboard", 500)
+			return
+		}
+		dto := DashboardDTO{ID: id, Name: strings.TrimSpace(input.Name)}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(dto)
+	}))
+
+	// DELETE /api/v1/dashboards/{id}
+	mux.HandleFunc("DELETE /api/v1/dashboards/{id}", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		exists, err := dashboardExists(db, id)
+		if err != nil || !exists {
+			jsonError(w, "Not found", 404)
+			return
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			jsonError(w, "Internal error", 500)
+			return
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`DELETE FROM links WHERE category_id IN (SELECT id FROM categories WHERE dashboard_id = ?)`, id); err != nil {
+			jsonError(w, "Internal error", 500)
+			return
+		}
+		if _, err := tx.Exec(`DELETE FROM categories WHERE dashboard_id = ?`, id); err != nil {
+			jsonError(w, "Internal error", 500)
+			return
+		}
+		if _, err := tx.Exec(`DELETE FROM dashboards WHERE id = ?`, id); err != nil {
+			jsonError(w, "Internal error", 500)
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			jsonError(w, "Internal error", 500)
+			return
+		}
+		w.WriteHeader(204)
+	}))
+
+	// ─── Category API ───
+
 	// GET /api/v1/categories
 	mux.HandleFunc("GET /api/v1/categories", requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		cats, err := loadCategories(db)
+		dashboardID := r.URL.Query().Get("dashboard_id")
+		if dashboardID == "" {
+			jsonError(w, "dashboard_id query param is required", 400)
+			return
+		}
+		cats, err := loadCategories(db, dashboardID)
 		if err != nil {
 			jsonError(w, "Internal server error", 500)
 			return
@@ -620,8 +729,9 @@ func main() {
 	// POST /api/v1/categories
 	mux.HandleFunc("POST /api/v1/categories", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			Name string `json:"name"`
-			Icon string `json:"icon"`
+			Name        string `json:"name"`
+			Icon        string `json:"icon"`
+			DashboardID string `json:"dashboardId"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			jsonError(w, "Invalid JSON", 400)
@@ -635,6 +745,15 @@ func main() {
 			jsonError(w, "Name too long", 400)
 			return
 		}
+		if strings.TrimSpace(input.DashboardID) == "" {
+			jsonError(w, "dashboardId is required", 400)
+			return
+		}
+		exists, err := dashboardExists(db, input.DashboardID)
+		if err != nil || !exists {
+			jsonError(w, "Dashboard not found", 400)
+			return
+		}
 		icon := strings.TrimSpace(input.Icon)
 		if icon == "" {
 			icon = "\U0001F4C1" // 📁
@@ -643,7 +762,7 @@ func main() {
 			jsonError(w, "Icon too long", 400)
 			return
 		}
-		n, err := countCategories(db)
+		n, err := countCategories(db, input.DashboardID)
 		if err != nil {
 			jsonError(w, "Internal error", 500)
 			return
@@ -651,23 +770,20 @@ func main() {
 		displayOrder := n + 1
 		id := uuid.New().String()
 		_, err = db.Exec(
-			`INSERT INTO categories (id, name, icon, display_order, is_builtin) VALUES (?, ?, ?, ?, 0)`,
-			id, strings.TrimSpace(input.Name), icon, displayOrder,
+			`INSERT INTO categories (id, name, icon, display_order, dashboard_id) VALUES (?, ?, ?, ?, ?)`,
+			id, strings.TrimSpace(input.Name), icon, displayOrder, input.DashboardID,
 		)
 		if err != nil {
 			jsonError(w, "Failed to create category", 500)
 			return
 		}
-		// Return created DTO — ponytail: build from input+id, skip readback
 		dto := CategoryDTO{
 			ID:           id,
 			Name:         strings.TrimSpace(input.Name),
 			Icon:         icon,
 			DisplayOrder: displayOrder,
-			Builtin:      false,
 			Links:        []LinkDTO{},
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
 		json.NewEncoder(w).Encode(dto)
@@ -676,17 +792,13 @@ func main() {
 	// DELETE /api/v1/categories/{id}
 	mux.HandleFunc("DELETE /api/v1/categories/{id}", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		isBuiltin, found, err := getCategoryBuiltin(db, id)
+		exists, err := categoryExists(db, id)
 		if err != nil {
 			jsonError(w, "Internal error", 500)
 			return
 		}
-		if !found {
+		if !exists {
 			jsonError(w, "Not found", 404)
-			return
-		}
-		if isBuiltin {
-			jsonError(w, "Cannot delete built-in category", 403)
 			return
 		}
 		tx, err := db.Begin()
@@ -709,6 +821,8 @@ func main() {
 		}
 		w.WriteHeader(204)
 	}))
+
+	// ─── Link API ───
 
 	// POST /api/v1/links
 	mux.HandleFunc("POST /api/v1/links", requireAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -750,14 +864,13 @@ func main() {
 		}
 		id := uuid.New().String()
 		_, err = db.Exec(
-			`INSERT INTO links (id, name, url, category_id, display_order, is_builtin) VALUES (?, ?, ?, ?, ?, 0)`,
+			`INSERT INTO links (id, name, url, category_id, display_order) VALUES (?, ?, ?, ?, ?)`,
 			id, strings.TrimSpace(input.Name), strings.TrimSpace(input.URL), input.CategoryID, maxOrder+1,
 		)
 		if err != nil {
 			jsonError(w, "Failed to create link", 500)
 			return
 		}
-		// Build DTO from input+id, skip readback
 		dto := LinkDTO{
 			ID:           id,
 			Name:         strings.TrimSpace(input.Name),
@@ -765,9 +878,7 @@ func main() {
 			Domain:       extractDomain(strings.TrimSpace(input.URL)),
 			CategoryID:   input.CategoryID,
 			DisplayOrder: maxOrder + 1,
-			Builtin:      false,
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
 		json.NewEncoder(w).Encode(dto)
@@ -776,17 +887,10 @@ func main() {
 	// DELETE /api/v1/links/{id}
 	mux.HandleFunc("DELETE /api/v1/links/{id}", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		isBuiltin, found, err := getLinkBuiltin(db, id)
-		if err != nil {
-			jsonError(w, "Internal error", 500)
-			return
-		}
-		if !found {
+		var n int
+		err := db.QueryRow(`SELECT COUNT(*) FROM links WHERE id = ?`, id).Scan(&n)
+		if err != nil || n == 0 {
 			jsonError(w, "Not found", 404)
-			return
-		}
-		if isBuiltin {
-			jsonError(w, "Cannot delete built-in link", 403)
 			return
 		}
 		if _, err := db.Exec(`DELETE FROM links WHERE id = ?`, id); err != nil {
@@ -796,161 +900,6 @@ func main() {
 		w.WriteHeader(204)
 	}))
 
-	// GET /api/v1/export
-	mux.HandleFunc("GET /api/v1/export", requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		cats, err := loadCustomCategories(db)
-		if err != nil {
-			jsonError(w, "Internal error", 500)
-			return
-		}
-		links, err := loadCustomLinks(db)
-		if err != nil {
-			jsonError(w, "Internal error", 500)
-			return
-		}
-		dto := ExportDTO{
-			Categories: make([]CategoryExport, len(cats)),
-			Links:      make([]LinkExport, len(links)),
-		}
-		for i, c := range cats {
-			dto.Categories[i] = CategoryExport{Name: c.Name, Icon: c.Icon}
-		}
-		for i, l := range links {
-			dto.Links[i] = LinkExport{Name: l.Name, URL: l.URL, Category: l.CategoryName}
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(dto)
-	}))
-
-	// POST /api/v1/import
-	mux.HandleFunc("POST /api/v1/import", requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		var importData ExportDTO
-		if err := json.NewDecoder(r.Body).Decode(&importData); err != nil {
-			jsonError(w, "Invalid JSON", 400)
-			return
-		}
-
-		tx, err := db.Begin()
-		if err != nil {
-			jsonError(w, "Internal error", 500)
-			return
-		}
-		defer tx.Rollback()
-
-		catsImported := 0
-		linksImported := 0
-		catMap := make(map[string]string)
-
-		for _, ce := range importData.Categories {
-			// Validate lengths
-			if len(ce.Name) > maxNameLen || len(ce.Icon) > maxIconLen {
-				continue
-			}
-			exists, err := categoryExistsByName(tx, ce.Name)
-			if err != nil {
-				jsonError(w, "Internal error", 500)
-				return
-			}
-			if exists {
-				cat, err := findCategoryByName(tx, ce.Name)
-				if err != nil {
-					jsonError(w, "Internal error", 500)
-					return
-				}
-				if cat != nil {
-					catMap[strings.ToLower(ce.Name)] = cat.ID
-				}
-				continue
-			}
-			n, err := countCategories(tx)
-			if err != nil {
-				jsonError(w, "Internal error", 500)
-				return
-			}
-			id := uuid.New().String()
-			icon := ce.Icon
-			if icon == "" {
-				icon = "\U0001F4C1"
-			}
-			if _, err := tx.Exec(`INSERT INTO categories (id, name, icon, display_order, is_builtin) VALUES (?, ?, ?, ?, 0)`,
-				id, ce.Name, icon, n+1); err != nil {
-				jsonError(w, "Internal error", 500)
-				return
-			}
-			catMap[strings.ToLower(ce.Name)] = id
-			catsImported++
-		}
-
-		for _, le := range importData.Links {
-			// Validate lengths
-			if len(le.Name) > maxNameLen || len(le.URL) > maxURLLen || len(le.Category) > maxNameLen {
-				continue
-			}
-			if parsed, err := url.Parse(le.URL); err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				continue
-			}
-			catID, ok := catMap[strings.ToLower(le.Category)]
-			if !ok {
-				cat, err := findCategoryByName(tx, le.Category)
-				if err != nil {
-					jsonError(w, "Internal error", 500)
-					return
-				}
-				if cat == nil {
-					n, err := countCategories(tx)
-					if err != nil {
-						jsonError(w, "Internal error", 500)
-						return
-					}
-					id := uuid.New().String()
-					if _, err := tx.Exec(`INSERT INTO categories (id, name, icon, display_order, is_builtin) VALUES (?, ?, ?, ?, 0)`,
-						id, le.Category, "\U0001F4C1", n+1); err != nil {
-						jsonError(w, "Internal error", 500)
-						return
-					}
-					catID = id
-					catMap[strings.ToLower(le.Category)] = id
-					catsImported++
-				} else {
-					catID = cat.ID
-					catMap[strings.ToLower(le.Category)] = cat.ID
-				}
-			}
-			dup, err := linkExists(tx, le.URL, catID)
-			if err != nil {
-				jsonError(w, "Internal error", 500)
-				return
-			}
-			if !dup {
-				maxOrd, err := maxLinkOrder(tx, catID)
-				if err != nil {
-					jsonError(w, "Internal error", 500)
-					return
-				}
-				id := uuid.New().String()
-				if _, err := tx.Exec(`INSERT INTO links (id, name, url, category_id, display_order, is_builtin) VALUES (?, ?, ?, ?, ?, 0)`,
-					id, le.Name, le.URL, catID, maxOrd+1); err != nil {
-					jsonError(w, "Internal error", 500)
-					return
-				}
-				linksImported++
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			jsonError(w, "Internal error", 500)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]int{
-			"categoriesImported": catsImported,
-			"linksImported":      linksImported,
-		})
-	}))
-
-	// ─── Start ───
 	log.Printf("[server] listening on :%s", port)
 	log.Printf("[server] http://localhost:%s", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {

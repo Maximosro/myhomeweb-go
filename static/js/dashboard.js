@@ -18,6 +18,9 @@
         // Supabase unreachable — continue with token from localStorage
     }
 
+    // ===== Dashboard state =====
+    const currentDashboardId = document.getElementById('main-grid')?.dataset?.dashboardId || null;
+
     // ===== Logout button =====
     const logoutBtn = document.getElementById('btn-logout');
     if (logoutBtn) {
@@ -139,6 +142,11 @@
     document.getElementById('bw-refresh').addEventListener('click', measureBandwidth);
     measureBandwidth();
 
+    // ===== Dashboard navigation =====
+    function switchDashboard(id) {
+        window.location.href = '/dashboard/' + id;
+    }
+
     // ===== Modal logic =====
     const overlay = document.getElementById('modal-overlay');
     const modalTitle = document.getElementById('modal-title');
@@ -159,6 +167,60 @@
     });
 
     modalSave.addEventListener('click', () => { if (currentModalAction) currentModalAction(); });
+
+    // ===== Dashboard tabs: add dashboard =====
+    function openCreateDashboardModal() {
+        modalTitle.textContent = 'Nuevo dashboard';
+        modalFields.innerHTML = '<input type="text" id="input-dash-name" placeholder="Nombre del dashboard" autocomplete="off">';
+        currentModalAction = async () => {
+            const name = document.getElementById('input-dash-name').value.trim();
+            if (!name) return;
+            try {
+                const d = await authFetch('POST', '/api/v1/dashboards', { name });
+                switchDashboard(d.id);
+            } catch (e) { alert('Error al crear dashboard'); }
+        };
+        openModal();
+        setTimeout(() => document.getElementById('input-dash-name').focus(), 50);
+    }
+
+    const btnAddDash = document.getElementById('btn-add-dashboard');
+    if (btnAddDash) btnAddDash.addEventListener('click', openCreateDashboardModal);
+
+    // Dashboard tabs: rename on double-click
+    document.getElementById('dashboard-tabs')?.addEventListener('dblclick', function(e) {
+        const tab = e.target.closest('.tab[data-dashboard-id]');
+        if (!tab) return;
+        const id = tab.dataset.dashboardId;
+        const currentName = tab.textContent.trim();
+        modalTitle.textContent = 'Renombrar dashboard';
+        modalFields.innerHTML = '<input type="text" id="input-dash-name" value="' + currentName.replace(/"/g, '&quot;') + '" autocomplete="off">';
+        currentModalAction = async () => {
+            const name = document.getElementById('input-dash-name').value.trim();
+            if (!name) return;
+            try {
+                await authFetch('PUT', '/api/v1/dashboards/' + id, { name });
+                location.reload();
+            } catch (e) { alert('Error al renombrar'); }
+        };
+        openModal();
+        setTimeout(() => { const inp = document.getElementById('input-dash-name'); inp.focus(); inp.select(); }, 50);
+    });
+
+    // Dashboard tabs: delete on right-click
+    document.getElementById('dashboard-tabs')?.addEventListener('contextmenu', function(e) {
+        const tab = e.target.closest('.tab[data-dashboard-id]');
+        if (!tab) return;
+        e.preventDefault();
+        const id = tab.dataset.dashboardId;
+        const name = tab.textContent.trim();
+        if (!confirm('¿Eliminar el dashboard "' + name + '" y todo su contenido?')) return;
+        authFetch('DELETE', '/api/v1/dashboards/' + id).then(() => {
+            const remaining = document.querySelector('.tab[data-dashboard-id]:not([data-dashboard-id="' + id + '"])');
+            if (remaining) switchDashboard(remaining.dataset.dashboardId);
+            else window.location.href = '/';
+        }).catch(() => alert('Error al eliminar'));
+    });
 
     // ===== CRUD: Add link =====
     function openAddLinkModal(categoryEl) {
@@ -190,8 +252,7 @@
             await authFetch('DELETE', '/api/v1/links/' + id);
             location.reload();
         } catch (e) {
-            if (e.status === 403) alert('No se puede eliminar un enlace predefinido');
-            else alert('Error al eliminar');
+            alert('Error al eliminar');
         }
     }
     window.deleteLink = deleteLink;
@@ -205,7 +266,7 @@
             const icon = document.getElementById('input-cat-icon').value.trim() || '\uD83D\uDCC1';
             if (!name) return;
             try {
-                await authFetch('POST', '/api/v1/categories', { name, icon });
+                await authFetch('POST', '/api/v1/categories', { name, icon, dashboardId: currentDashboardId });
                 location.reload();
             } catch (e) {
                 alert('Error al crear categoría');
@@ -222,8 +283,7 @@
             await authFetch('DELETE', '/api/v1/categories/' + id);
             location.reload();
         } catch (e) {
-            if (e.status === 403) alert('No se puede eliminar una categoría predefinida');
-            else alert('Error al eliminar');
+            alert('Error al eliminar');
         }
     }
     window.deleteCategory = deleteCategory;
