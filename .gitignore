@@ -11,3 +11,4 @@ data/
 data/myhomeweb.db-wal
 data/myhomeweb.db-shm
 /data
+/static/images/old
